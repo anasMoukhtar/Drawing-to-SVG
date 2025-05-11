@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -8,8 +9,10 @@ import SVGPreview from '@/components/svg-preview';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Trash2, Sparkles, Download, LoaderCircle, AlertCircle, Info } from 'lucide-react';
+import { Trash2, Sparkles, Download, LoaderCircle, AlertCircle, Info, KeyRound } from 'lucide-react';
 import { handleVectorizeImageAction, type VectorizeResult } from './actions';
 
 const CANVAS_WIDTH = 500;
@@ -23,8 +26,8 @@ export default function VectorInkPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasDrawing, setHasDrawing] = useState(false);
   const [showInitialInfo, setShowInitialInfo] = useState(true);
+  const [apiKey, setApiKey] = useState<string>('');
 
-  // Effect to check if localStorage is available for initial info persistence
   useEffect(() => {
     try {
       const initialInfoDismissed = localStorage.getItem('vectorInkInitialInfoDismissed');
@@ -32,7 +35,6 @@ export default function VectorInkPage() {
         setShowInitialInfo(false);
       }
     } catch (e) {
-      // localStorage not available (e.g. incognito, SSR)
       console.warn("localStorage not available for initial info persistence.");
     }
   }, []);
@@ -46,11 +48,10 @@ export default function VectorInkPage() {
     }
   };
 
-
   const handleCanvasModified = () => {
     setHasDrawing(true);
-    setError(null); // Clear previous errors when user draws again
-    setSvgOutput(null); // Clear previous SVG output
+    setError(null);
+    setSvgOutput(null); 
   };
 
   const handleClearCanvas = () => {
@@ -64,8 +65,14 @@ export default function VectorInkPage() {
   const handleVectorize = async () => {
     if (!canvasRef.current) return;
 
+    if (!apiKey.trim()) {
+      setError("API Key is required to vectorize the image.");
+      toast({ variant: "destructive", title: "API Key Missing", description: "Please enter your Google AI API Key." });
+      return;
+    }
+
     const drawingDataUri = canvasRef.current.captureDrawing();
-    if (!drawingDataUri && hasDrawing) { // If hasDrawing is true but capture is null, it's an issue.
+    if (!drawingDataUri && hasDrawing) {
         setError("Could not capture drawing. Please try again.");
         toast({ variant: "destructive", title: "Capture Failed", description: "Could not capture drawing. Please try drawing again." });
         return;
@@ -81,7 +88,7 @@ export default function VectorInkPage() {
     setError(null);
 
     try {
-      const result: VectorizeResult = await handleVectorizeImageAction(drawingDataUri);
+      const result: VectorizeResult = await handleVectorizeImageAction(drawingDataUri, apiKey);
       if (result.svgData) {
         setSvgOutput(result.svgData);
         toast({ title: "Vectorization Complete!", description: "Your drawing has been converted to SVG." });
@@ -129,14 +136,39 @@ export default function VectorInkPage() {
             <Info className="h-5 w-5" />
             <AlertTitle className="font-semibold">Welcome to VectorInk!</AlertTitle>
             <AlertDescription>
-              Draw on the canvas, then click "Vectorize Drawing" to convert it to an SVG.
-              You can then preview and download your creation.
+              Enter your Google AI API Key, draw on the canvas, then click "Vectorize Drawing" to convert it to an SVG.
+              You can then preview and download your creation. Your API key is sent to the server for each request and not stored.
             </AlertDescription>
             <Button variant="outline" size="sm" onClick={dismissInitialInfo} className="mt-3">
               Got it!
             </Button>
           </Alert>
         )}
+
+        <div className="mb-6">
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="text-xl flex items-center"><KeyRound className="mr-2 h-5 w-5 text-primary" />API Key Configuration</CardTitle>
+                    <CardDescription>Enter your Google AI API Key. It is required for vectorization.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-2">
+                        <Label htmlFor="apiKey">Google AI API Key</Label>
+                        <Input 
+                            id="apiKey" 
+                            type="password" 
+                            placeholder="Enter your API Key here" 
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            className="text-sm"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Your API key is used solely for processing your requests and is not stored long-term.
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
 
         <div className="grid lg:grid-cols-2 gap-8 items-start">
           <Card className="shadow-xl overflow-hidden">
@@ -173,7 +205,7 @@ export default function VectorInkPage() {
             <CardContent className="flex flex-col gap-6">
               <Button 
                 onClick={handleVectorize} 
-                disabled={isVectorizing || !hasDrawing} 
+                disabled={isVectorizing || !hasDrawing || !apiKey.trim()} 
                 className="w-full py-3 text-base"
                 aria-label="Vectorize drawing"
               >
@@ -188,13 +220,13 @@ export default function VectorInkPage() {
               {error && (
                 <Alert variant="destructive" className="shadow-md">
                   <AlertCircle className="h-5 w-5" />
-                  <AlertTitle className="font-semibold">Vectorization Error</AlertTitle>
+                  <AlertTitle className="font-semibold">Error</AlertTitle>
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
 
               <div className="mt-2 p-4 border-2 border-dashed border-input rounded-lg bg-muted min-h-[250px] sm:min-h-[300px] flex items-center justify-center overflow-auto shadow-inner">
-                {isVectorizing && !svgOutput && ( // Show loader only if no previous SVG is there
+                {isVectorizing && !svgOutput && ( 
                   <div className="text-center text-muted-foreground">
                     <LoaderCircle className="h-10 w-10 animate-spin mx-auto mb-3 text-primary" />
                     <p className="font-medium">Vectorizing your drawing...</p>
@@ -206,12 +238,12 @@ export default function VectorInkPage() {
                 )}
                 {!isVectorizing && !svgOutput && !error && (
                    <p className="text-muted-foreground text-center p-4">
-                     Your vectorized SVG will appear here after conversion.
+                     {apiKey.trim() ? "Your vectorized SVG will appear here after conversion." : "Please enter your API key to enable vectorization."}
                    </p>
                 )}
-                 {!isVectorizing && !svgOutput && error && ( // If there was an error, show a message here too
+                 {!isVectorizing && !svgOutput && error && ( 
                    <p className="text-destructive text-center p-4">
-                     Could not display SVG due to an error. Please try again.
+                     Could not display SVG. {error.startsWith("API Key") ? "Please check your API Key." : "Please try again."}
                    </p>
                 )}
               </div>
@@ -233,3 +265,5 @@ export default function VectorInkPage() {
     </>
   );
 }
+
+    
